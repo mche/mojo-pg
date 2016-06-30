@@ -4,8 +4,6 @@ use Mojo::Base 'Mojo::EventEmitter';
 use Carp 'croak';
 use DBI;
 use Mojo::Pg::Database;
-use Mojo::Pg::Migrations;
-use Mojo::Pg::PubSub;
 use Mojo::URL;
 use Scalar::Util 'weaken';
 
@@ -13,6 +11,7 @@ has [qw(auto_migrate search_path)];
 has dsn             => 'dbi:Pg:';
 has max_connections => 5;
 has migrations      => sub {
+  require Mojo::Pg::Migrations;
   my $migrations = Mojo::Pg::Migrations->new(pg => shift);
   weaken $migrations->{pg};
   return $migrations;
@@ -22,13 +21,12 @@ has options => sub {
 };
 has [qw(password username)] => '';
 has pubsub => sub {
+  require Mojo::Pg::PubSub;
   my $pubsub = Mojo::Pg::PubSub->new(pg => shift);
   weaken $pubsub->{pg};
   return $pubsub;
 };
 has db_class => 'Mojo::Pg::Database';
-has on_connect => sub {[]};
-
 
 our $VERSION = '2.29';
 
@@ -73,29 +71,12 @@ sub new { @_ > 1 ? shift->SUPER::new->from_string(@_) : shift->SUPER::new }
 sub _dequeue {
   my $self = shift;
 
-  my $queue = $self->{queue} ||= [];
-  
-  for my $i (0..$#$queue) {
-    
-    my $dbh = $queue->[$i];
-    
-    delete $queue->[$i]
-      and next
-      unless $dbh->ping;
-    
-    return (splice(@$queue, $i, 1))[0]
-      unless $dbh->{pg_async_status} > 0;
-  }
-  
+  while (my $dbh = shift @{$self->{queue} || []}) { return $dbh if $dbh->ping }
   my $dbh = DBI->connect(map { $self->$_ } qw(dsn username password options));
   if (my $path = $self->search_path) {
     my $search_path = join ', ', map { $dbh->quote_identifier($_) } @$path;
     $dbh->do("set search_path to $search_path");
   }
-  
-  $dbh->do($_)
-    for @{$self->on_connect};
-  
   ++$self->{migrated} and $self->migrations->migrate
     if !$self->{migrated} && $self->auto_migrate;
   $self->emit(connection => $dbh);
@@ -344,14 +325,6 @@ easily.
 
   # Load migrations from file and migrate to latest version
   $pg->migrations->from_file('/home/sri/migrations.sql')->migrate;
-
-=head2 on_connect
-
-Arrayref for statements $dbh->do() on connection established.
-
-  push @{$pg->on_connect}, '<statement>';
-
-See also events L</"connection">.
 
 =head2 options
 

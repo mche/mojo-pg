@@ -21,7 +21,7 @@ my $db_class = 'MojoPgTestDatabase';
 my $result_class = 'MojoPgTestResults';
 
 # Connected
-my $pg = MojoPgTest->new($ENV{TEST_ONLINE})->on_connect(['set datestyle to "DMY, ISO";']);
+my $pg = MojoPgTest->new($ENV{TEST_ONLINE});
 ok $pg->db->ping, 'connected';
 isa_ok $pg, $pg_class, 'top class';
 
@@ -34,17 +34,14 @@ my $cb = sub {
   die $err if $err;
   $result = $res;
 };
-$db->query('select ?::date as d', ("30/06/2016"), $cb);
+$db->query('select 1', $cb);
 Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
 isa_ok $result, $result_class, 'result class';
-like $result->hash->{d}, qr/\d{4}-\d{2}-\d{2}/, 'on_connect do datestyle';
 
 
-my $die = 'OUH, BUHHH!';
-my $rc = $db->query('select 1', sub {die $die});
-Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
-isa_ok $rc, 'Mojo::Reactor::Poll', 'non-blocking callback die';
-like $rc->{cb_error}, qr/$die/, 'error on callback through reactor';
+$result = $db->query('select 1');
+isa_ok $result, $result_class, 'result class';
+
 
 done_testing();
 

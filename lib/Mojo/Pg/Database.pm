@@ -142,11 +142,7 @@ sub _watch {
       my $result = do { local $dbh->{RaiseError} = 0; $dbh->pg_result };
       my $err = defined $result ? undef : $dbh->errstr;
 
-      eval { $self->$cb($err, $self->result_class->new(sth => $sth)); };
-      warn "Non-blocking callback result error: ", $@
-        and $reactor->{cb_error} = $@
-        if $@;
-      
+      $self->$cb($err, $self->result_class->new(sth => $sth));
       $self->_unwatch unless $self->{waiting} || $self->is_listening;
     }
   )->watch($self->{handle}, 1, 0);
